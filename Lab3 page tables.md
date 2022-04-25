@@ -23,7 +23,7 @@ xv6虚拟地址的组成：
 
 va转换为pa的过程：
 
-![image-20220415184418540](/home/chen/.config/Typora/typora-user-images/image-20220415184418540.png)
+![image-20220415184418540](./images/image-20220415184418540.png)
 
 2^9=512，所以每一级pagetable都有512个PTE，每个PTE是64位的，所以每个pagetable的大小为512×64/8=4096Byte，即一页。由此可知，pagetable也是按页分配的，**实际上`kalloc`就是按页分配的**。PTE中存的值很神奇，后10位表示下一页的权限信息（合法，读，写，可执行，用户可用等），定义在`riscv.h`中：
 
@@ -49,7 +49,7 @@ va转换为pa的过程：
 
 **user address space:**
 
-![image-20220415192020168](/home/chen/.config/Typora/typora-user-images/image-20220415192020168.png)
+![image-20220415192020168](./images/image-20220415192020168.png)
 
 #### 1.3 实现
 
@@ -89,7 +89,7 @@ vmprint(pagetable_t pagetable)
 
 注意观察输出结果：
 
-![image-20220415193244270](/home/chen/.config/Typora/typora-user-images/image-20220415193244270.png)
+![image-20220415193244270](./images/image-20220415193244270.png)
 
 一点解释：这个用户程序是init，在`kernel/proc.c`中，在函数`userinit`中被加载进了第一个process，因为我们需要`if (p->pid == 1) vmprint(p->pagetable)`来打印。
 
@@ -114,7 +114,7 @@ vmprint(pagetable_t pagetable)
 
 kernel address space的映射方式，左边虚拟地址，右边是物理地址
 
-![image-20220415201450918](/home/chen/.config/Typora/typora-user-images/image-20220415201450918.png)
+![image-20220415201450918](./images/image-20220415201450918.png)
 
 在PHYSTOP以下，kernel address space 的映射方式是恒等映射。KERNBASE以下是device，以上是RAM。对于device的i映射在`kernel/vm.c`中的kvminit函数，中间的kernel text和kerneldata就是kernel所在的位置了。顶部的kstack映射方式不是恒等映射，而是把它放得很高，映射到下面，**之所以把kstack放得这么高，是因为stack从高处向下延伸，并且需要guard page来防止kstack过大，一旦kstack“侵入”guard page，由于guard page的pte的flag PTE_U是0,用户不允许访问，因此会触发异常**。kstack的映射是在`kernel/vm.c`中的procinit函数分配的。
 

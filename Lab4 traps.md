@@ -4,7 +4,7 @@
 
 故事要从一张图片说起：
 
-![image-20220419232944626](/home/chen/.config/Typora/typora-user-images/image-20220419232944626.png)
+![image-20220419232944626](./images/image-20220419232944626.png)
 
 进程的创建和程序的运行：
 
@@ -40,23 +40,23 @@
 
   我在`echo.c`的main函数中加了`int a = 1`和`printf("%p\n", &a)`，即声明一个变量并打印它的地址，通过gdb调试如下：
 
-  ![image-20220423205720693](/home/chen/.config/Typora/typora-user-images/image-20220423205720693.png)
+  ![image-20220423205720693](./images/image-20220423205720693.png)
 
   在fork，exec以及sys_sbrk上设置断点，continue，可以发现：
 
-  ![image-20220423205840228](/home/chen/.config/Typora/typora-user-images/image-20220423205840228.png)
+  ![image-20220423205840228](./images/image-20220423205840228.png)
 
   载入并执行初始程序`init`，继续continue
 
-  ![image-20220423210016937](/home/chen/.config/Typora/typora-user-images/image-20220423210016937.png)
+  ![image-20220423210016937](./images/image-20220423210016937.png)
 
   先fork，在载入并执行`shell`，此时我们可以进行交互了，输入echo hi后，继续continue
 
-  ![image-20220423210307277](/home/chen/.config/Typora/typora-user-images/image-20220423210307277.png)
+  ![image-20220423210307277](./images/image-20220423210307277.png)
 
   中间多了一步sys_sbrk，用于扩大空间，然后载入并执行echo，此时在0x1a处设置断点（使PC停留在执行完`int a = 1;`i以后），continue。此时我们先来预测一下结果，看汇编代码，`li	a5,1`表示a5存的是1,也就是变量a的值，`sw	a5,-52(s0)`表示将a5的值存到s0-52的地址处，也就是a的地址，所以s0-52就表示变量a的内存单元，我们不妨打印这个地址和地址中的值：
 
-  ![image-20220423211139617](/home/chen/.config/Typora/typora-user-images/image-20220423211139617.png)
+  ![image-20220423211139617](./images/image-20220423211139617.png)
 
   可以看到地址中的值正是1,而且值得注意的是变量a的地址在user address space中为`0x2f8c`，这个地址应该在第3页，从第一副图可以看出这个地址在guard page，<font color=red>**很奇怪**</font>，guard page中的地址都是非法的呀！原来在xv6 book中有如下论述：**xv6 programs have only one program section header, but other systems might have separate sections for instructions and data**.在xv6中text和data是合一起的，所以这个地址应该在stack中，而不是guard page中。
 
