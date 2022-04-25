@@ -1,6 +1,6 @@
 ## Lab3 page tables
 
-### 1. Print a page table(<font color=green>easy</font>)
+### 1. Print a page table(<span style="color:green;">easy</span>)
 
 #### 1.1 题目
 
