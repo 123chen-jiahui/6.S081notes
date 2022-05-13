@@ -37,7 +37,7 @@ struct {
  } kmem[NCPU];
 ```
 
-修改`kinit`用以舒适化
+修改`kinit`用以初始化
 
 ```c
 void
