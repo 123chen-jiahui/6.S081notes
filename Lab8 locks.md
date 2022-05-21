@@ -338,3 +338,109 @@ bunpin(struct buf *b) {
 2. 对buf中时间戳的更新时机。是在bget的时候更新还是在brelse的时候更新？原来的实现是在brelse时实现LRU，但我发现改进后，bget和brelse都可以，似乎不影响。
 
 3. 可以有更好的解决方案，即：每个桶中都按buf的时间戳从小到大排列，这样便于LRU的实现，不过这么做似乎性能上并没有很大提升，并且实现起来有点繁琐。
+
+### 番外
+
+有关`bio.c`中的睡眠锁`sleeplock`。这个东西很牛\*。
+
+且看初始的bget函数和bread函数（即改进之前的版本）:
+
+```c
+static struct buf*
+bget(uint dev, uint blockno)
+{
+  struct buf *b;
+
+  acquire(&bcache.lock);
+
+  // Is the block already cached?
+  for(b = bcache.head.next; b != &bcache.head; b = b->next){
+    if(b->dev == dev && b->blockno == blockno){
+      b->refcnt++;
+      release(&bcache.lock);
+      acquiresleep(&b->lock);
+      return b;
+    }
+  }
+
+  // Not cached.
+  // Recycle the least recently used (LRU) unused buffer.
+  for(b = bcache.head.prev; b != &bcache.head; b = b->prev){
+    if(b->refcnt == 0) {
+      b->dev = dev;
+      b->blockno = blockno;
+      b->valid = 0;
+      b->refcnt = 1;
+      release(&bcache.lock);
+      acquiresleep(&b->lock);
+      return b;                                                                                                                                     }
+  }
+  panic("bget: no buffers");
+}
+```
+
+```c
+struct buf*
+bread(uint dev, uint blockno)
+{
+  struct buf *b;
+
+  b = bget(dev, blockno);
+  if(!b->valid) {
+    virtio_disk_rw(b, 0);
+    b->valid = 1;
+  }
+  return b;
+}
+```
+
+里面可以发现一个奇怪函数：`acquiresleep`。对如果是获取b->lock，我们是可以理解的，因为这个缓存将会被返回，做下一步操作，所以要获取b->lock，那为什么要以这种奇怪的形式获取呢？因为有两点可以说明我们不能简单得获取自旋锁：
+
+1. 如果两个进程争用一把锁，而磁盘操作可能很耗时，一个进程获取了锁，需要用大量的时间来做磁盘操作，这时另一个进程会一直在那spin，尝试获取锁，这造成了CPU资源的浪费。
+
+2. 由于获取自旋锁的时候会关闭中断，这意味着如果我们只获取自旋锁，我们将收不到任何磁盘产生的中断信息，（磁盘也是设备，它与UART相似，会产生中断，虽然我不知道具体工作原理是什么），所以中断驱动程序就无法运行。
+
+方案：<font color = red>**大锁套小锁**</font>
+
+一个进程<font color = red>**等待**</font>这样一个事件的发生：<font color = red>**大锁没有被锁住**</font>。如果大锁被锁住了（即该block cache的访问权限已经被别的进程抢走了），就sleep，直到那个进程释放大锁并wakeup其他进程。如果大锁没有被锁，置该锁为1（锁住状态），这样就消除了其他进程对该大锁的访问。由于不同进程对大锁的锁住与非锁住状态有并发访问，所以<font color = red>**需要一个小锁来保护这个不变量**</font>。这与我在“sleep&wakeup”中讲到的sleep和wakeup思想是一致的。还有很绝妙的地方是，这么做恰好使得做磁盘操作时，中断处于打开状态，因为acquiresleep返回之前释放了小锁，同时大锁处于锁住状态。
+
+下面来看看这种大锁套小锁——睡眠锁sleeplock：
+
+```c
+struct sleeplock {
+  uint locked;       // Is the lock held?
+  struct spinlock lk; // spinlock protecting this sleep lock
+
+  // For debugging:
+  char *name;        // Name of lock.
+  int pid;           // Process holding lock
+};
+```
+
+上面说的大锁就是外层的sleeplock，小锁就是内层的spinlock。每个block cache中都有一个sleeplock。一个有意思的地方是，sleeplock中的locked成员并不是通过acquire或是说test_and_set来设置的，它仅仅是一个condition，而这个condition保证了避免race condition。
+
+接下来是acquiresleep和releasesleep：
+
+```c
+void
+acquiresleep(struct sleeplock *lk)
+{
+  acquire(&lk->lk); // 保护大锁的不变量
+  while (lk->locked) {
+    sleep(lk, &lk->lk);
+  }
+  lk->locked = 1;
+  lk->pid = myproc()->pid;
+  release(&lk->lk);
+}
+
+void
+releasesleep(struct sleeplock *lk)
+{
+  acquire(&lk->lk);
+  lk->locked = 0;
+  lk->pid = 0;
+  wakeup(lk);
+  release(&lk->lk);
+}
+```
