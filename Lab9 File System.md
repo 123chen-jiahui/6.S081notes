@@ -21,7 +21,7 @@
 
 根据提示，更改`static uint bmap(struct inode *ip, uint bn)`，该函数的作用是：对于**inode中**的第n个block，指出其在磁盘设备中的block num。下面是一个改进之前的inode block number示意图：
 
-![](C:\Users\86151\Desktop\notes\6.S081notes\images\inode.jpg)
+![inode](./images/inode.jpg)
 
 ```c
 static uint
@@ -103,7 +103,7 @@ itrunc(struct inode *ip)
 
 inode是个好东西，可以说是它组织了文件（这里的文件，说的是硬盘上存在的物理文件）。它记录了文件的`metadata`（元数据），通过inode，我们就可以访问文件中的数据。但是inode同时有个缺点：它是通过inumber为区分的，对于用户来说，这很不方便。于是我们引入了文件名来区分文件，而<font color = red>**管理文件名**</font>的是**目录**。目录也是文件，只不过它是`file with some datastructure`，这里的datastructure是一个称为`directory entry`（目录项）的东西，一个简单的目录项如下：
 
-![](C:\Users\86151\Desktop\notes\6.S081notes\images\dirent.jpg)
+![dirent](./images/dirent.jpg)
 
 可以这么理解，目录数据块存的数据就是一堆目录项，可以通过类似数组的方式访问。我们可以看出，文件名只是一个标识，它是依赖于inode的，信息真正存在于inode中。
 
